@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# generate certificate
+cert_generate() {
+  rm -rf .docker/nginx/certs/demo.test.*
+  docker compose run --rm nginx sh -c "
+  cd /etc/nginx/certs &&
+  touch openssl.cnf &&
+  cat /etc/ssl/openssl.cnf > openssl.cnf &&
+  echo \"\" >> openssl.cnf &&
+  echo \"[ SAN ]\" >> openssl.cnf &&
+  echo \"subjectAltName=DNS.1:demo.test,DNS.2:*.demo.test\" >> openssl.cnf &&
+  openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout demo.test.key -out demo.test.crt -days 3650 -subj \"/CN=*.demo.test\" -config openssl.cnf -extensions SAN &&
+  rm openssl.cnf
+  "
+}
+
+# install certificate
+cert_install() {
+  if [[ $OSTYPE == darwin* ]]; then
+    sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain .docker/nginx/certs/demo.test.crt
+  elif [[ $OSTYPE == "linux-gnu" ]]; then
+    sudo ln -s "$(pwd)/.docker/nginx/certs/demo.test.crt" /usr/local/share/ca-certificates/demo.test.crt
+    sudo update-ca-certificates
+  else
+    echo "Could not install the certificate on the host machine. Please install it manually."
+  fi
+
+  docker compose exec -u0 backend update-ca-certificates
+}
+
+# create .env from .env.example
+env() {
+  if [ ! -f .env ]; then
+    cp .env.example .env
+  fi
+}
+
+# initialise docker environment and the application
+env \
+  && docker compose down -v \
+  && docker compose build \
+  && docker compose run --rm frontend npm ci
+
+if [ ! -f .docker/nginx/certs/demo.test.crt ]; then
+  cert_generate
+fi
+
+docker compose up -d \
+  && cert_install \
+  && open https://frontend.demo.test

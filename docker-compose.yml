@@ -1,0 +1,34 @@
+services:
+  nginx:
+    build: ./.docker/nginx
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      default:
+        aliases:
+          - frontend.demo.test
+    volumes:
+      - ./src/backend:/var/www/backend
+      - ./.docker/nginx/certs:/etc/nginx/certs
+      - ./.docker/nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - backend
+      - frontend
+  backend:
+    build:
+      context: ./src/backend
+      target: backend
+      args:
+        HOST_UID: $HOST_UID
+    working_dir: /var/www/backend
+    volumes:
+      - ./src/backend:/var/www/backend
+      - ./.docker/nginx/certs:/usr/local/share/ca-certificates
+  frontend:
+    build: ./src/frontend
+    working_dir: /var/www/frontend
+    volumes:
+      - ./src/frontend:/var/www/frontend
+    depends_on:
+      - backend
